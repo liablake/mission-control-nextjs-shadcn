@@ -6,7 +6,7 @@ export default function TasksPage() {
       <div>
         <h2 className="text-2xl font-semibold">Mission Control · Tasks</h2>
         <p className="text-sm text-muted-foreground">
-          Gerencie tarefas no estilo Trello com visualização em Kanban e Lista.
+          Tracker read-only das tarefas delegadas com visualização em Kanban e Lista.
         </p>
       </div>
 
