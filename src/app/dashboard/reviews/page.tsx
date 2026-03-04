@@ -4,7 +4,13 @@ import { AlertTriangle, ExternalLink, PlayCircle, Siren, Users } from "lucide-re
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { buildDailyOpsQueue, buildJourneyRows, buildReviewerWorkload, buildReviewSlaRows } from "@/lib/mission-insights";
+import {
+  buildDailyOpsQueue,
+  buildFeedbackLoopRows,
+  buildJourneyRows,
+  buildReviewerWorkload,
+  buildReviewSlaRows,
+} from "@/lib/mission-insights";
 import { getMissionDataset } from "@/lib/mission-data";
 
 function fmtTimecode(seconds?: number) {
@@ -26,14 +32,45 @@ export default async function ReviewsPage() {
   const slaRows = buildReviewSlaRows(data).sort((a, b) => (b.oldestOpenCommentHours ?? 0) - (a.oldestOpenCommentHours ?? 0));
   const dailyOpsQueue = buildDailyOpsQueue(data);
   const workloadRows = buildReviewerWorkload(dailyOpsQueue);
+  const feedbackRows = buildFeedbackLoopRows(data).sort((a, b) => (b.oldestOpenCommentHours ?? 0) - (a.oldestOpenCommentHours ?? 0));
+
+  const blockingFeedback = feedbackRows.filter((row) => row.blocking).length;
+  const totalOpenComments = feedbackRows.reduce((acc, row) => acc + row.openComments, 0);
 
   return (
     <div className="space-y-6 p-6">
       <div>
         <h2 className="text-2xl font-semibold">Review & Comments</h2>
         <p className="text-sm text-muted-foreground">
-          Preview de versões, comentários por timecode e aprovação por gate para evitar handoffs cegos.
+          Preview de versões, comentários por timecode e feedback loop por asset para evitar handoffs cegos.
         </p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Assets em feedback loop</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{feedbackRows.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Comentários em aberto</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{totalOpenComments}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Assets bloqueando entrega</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{blockingFeedback}</p>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -175,6 +212,45 @@ export default async function ReviewsPage() {
                     <Badge variant={row.risk === "high" ? "destructive" : row.risk === "medium" ? "outline" : "secondary"}>
                       {row.risk === "high" && <AlertTriangle className="mr-1 h-3 w-3" />}
                       {row.risk}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Visão de feedback por asset</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Item</TableHead>
+                <TableHead>Versão</TableHead>
+                <TableHead>Participantes</TableHead>
+                <TableHead>Feedback</TableHead>
+                <TableHead>Aging</TableHead>
+                <TableHead>Velocidade</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {feedbackRows.map((row) => (
+                <TableRow key={row.assetVersionId}>
+                  <TableCell>{row.itemTitle}</TableCell>
+                  <TableCell>{row.versionLabel}</TableCell>
+                  <TableCell>{row.participants}</TableCell>
+                  <TableCell>
+                    <span className="text-sm">{row.openComments} abertos</span>
+                    <p className="text-xs text-muted-foreground">{row.resolvedComments} resolvidos</p>
+                  </TableCell>
+                  <TableCell>{row.oldestOpenCommentHours ?? 0}h</TableCell>
+                  <TableCell>
+                    <Badge variant={row.feedbackVelocity === "slow" ? "destructive" : row.feedbackVelocity === "moderate" ? "outline" : "secondary"}>
+                      {row.feedbackVelocity}
                     </Badge>
                   </TableCell>
                 </TableRow>

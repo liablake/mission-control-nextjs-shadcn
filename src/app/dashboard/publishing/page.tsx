@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { buildJourneyRows } from "@/lib/mission-insights";
+import { buildChannelHealthRows, buildJourneyRows, buildPublishingCalendarRows } from "@/lib/mission-insights";
 import { getMissionDataset, type Channel } from "@/lib/mission-data";
 
 const channels: Channel[] = ["youtube", "instagram", "tiktok"];
@@ -9,6 +9,8 @@ const channels: Channel[] = ["youtube", "instagram", "tiktok"];
 export default async function PublishingPage() {
   const data = await getMissionDataset();
   const journeyRows = buildJourneyRows(data);
+  const calendarRows = buildPublishingCalendarRows(data);
+  const channelHealthRows = buildChannelHealthRows(data);
 
   const slotMap = new Map(data.publishSlots.map((slot) => [`${slot.contentItemId}:${slot.channel}`, slot]));
 
@@ -17,9 +19,54 @@ export default async function PublishingPage() {
       <div>
         <h2 className="text-2xl font-semibold">Publishing Queue</h2>
         <p className="text-sm text-muted-foreground">
-          Planejamento multi-plataforma com gate de aprovação e visibilidade de readiness por canal.
+          Planejamento editorial read-first com calendário e execução por canal, mantendo gate de aprovação visível.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Calendário editorial por canal</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Data (UTC)</TableHead>
+                {channels.map((channel) => (
+                  <TableHead key={channel} className="capitalize">
+                    {channel}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {calendarRows.map((row) => (
+                <TableRow key={row.dateKey}>
+                  <TableCell>{row.dateLabel}</TableCell>
+                  {channels.map((channel) => {
+                    const value = row.channels[channel];
+                    return (
+                      <TableCell key={channel}>
+                        {value.total === 0 ? (
+                          <Badge variant="outline">sem slots</Badge>
+                        ) : (
+                          <div className="space-y-1 text-xs">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary">slots: {value.total}</Badge>
+                              <Badge variant="outline">ready: {value.scheduled + value.published}</Badge>
+                            </div>
+                            <p className="text-muted-foreground">checklist médio: {value.avgChecklist}%</p>
+                          </div>
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -75,33 +122,32 @@ export default async function PublishingPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Fila por canal</CardTitle>
+          <CardTitle className="text-base">Saúde de publicação por canal</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Canal</TableHead>
-                <TableHead>Agendamento</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Checklist</TableHead>
+                <TableHead>Slots</TableHead>
+                <TableHead>Readiness</TableHead>
+                <TableHead>Publicados</TableHead>
+                <TableHead>Checklist médio</TableHead>
+                <TableHead>Atrasos</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.publishSlots.map((slot) => (
-                <TableRow key={slot.id}>
-                  <TableCell className="capitalize">{slot.channel}</TableCell>
-                  <TableCell>{new Date(slot.scheduledFor).toLocaleString("pt-BR", { timeZone: "UTC" })} UTC</TableCell>
+              {channelHealthRows.map((row) => (
+                <TableRow key={row.channel}>
+                  <TableCell className="capitalize">{row.channel}</TableCell>
+                  <TableCell>{row.totalSlots}</TableCell>
                   <TableCell>
-                    <Badge variant={slot.status === "published" ? "default" : "secondary"}>{slot.status}</Badge>
+                    <Badge variant={row.readyRate >= 70 ? "default" : row.readyRate >= 40 ? "outline" : "secondary"}>{row.readyRate}%</Badge>
                   </TableCell>
+                  <TableCell>{row.published}</TableCell>
+                  <TableCell>{row.avgChecklist}%</TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 w-24 rounded-full bg-muted">
-                        <div className="h-2 rounded-full bg-primary" style={{ width: `${slot.checklistScore}%` }} />
-                      </div>
-                      <span className="text-xs text-muted-foreground">{slot.checklistScore}%</span>
-                    </div>
+                    <Badge variant={row.missedSlots > 0 ? "destructive" : "secondary"}>{row.missedSlots}</Badge>
                   </TableCell>
                 </TableRow>
               ))}

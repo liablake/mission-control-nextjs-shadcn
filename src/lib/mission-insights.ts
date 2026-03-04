@@ -1,4 +1,4 @@
-import { type MissionDataset, type PipelineStage } from "@/lib/mission-data";
+import { type Channel, type MissionDataset, type PipelineStage } from "@/lib/mission-data";
 
 const journeyOrder: PipelineStage[] = ["ideation", "planning", "production", "review", "publishing"];
 
@@ -54,6 +54,51 @@ export type ReviewerWorkloadRow = {
   itemsInReview: number;
   unresolvedComments: number;
   criticalItems: number;
+};
+
+export type PublishingCalendarRow = {
+  dateKey: string;
+  dateLabel: string;
+  channels: Record<
+    Channel,
+    {
+      total: number;
+      scheduled: number;
+      published: number;
+      avgChecklist: number;
+      titles: string[];
+    }
+  >;
+};
+
+export type ChannelHealthRow = {
+  channel: Channel;
+  totalSlots: number;
+  scheduledOrPublished: number;
+  published: number;
+  avgChecklist: number;
+  readyRate: number;
+  missedSlots: number;
+};
+
+export type FeedbackLoopRow = {
+  assetVersionId: string;
+  itemTitle: string;
+  versionLabel: string;
+  openComments: number;
+  resolvedComments: number;
+  participants: number;
+  oldestOpenCommentHours?: number;
+  feedbackVelocity: "fast" | "moderate" | "slow";
+  blocking: boolean;
+};
+
+export type OpsDeliverySnapshot = {
+  throughputPublished7d: number;
+  scheduleAdherenceRate: number;
+  reviewClosureRate: number;
+  avgChecklistScore: number;
+  stageHandoffs: number;
 };
 
 function stageIndex(stage: PipelineStage) {
@@ -233,6 +278,129 @@ export function buildReviewerWorkload(queue: DailyOpsQueueRow[]): ReviewerWorklo
   }
 
   return [...byOwner.values()].sort((a, b) => b.unresolvedComments - a.unresolvedComments);
+}
+
+export function buildPublishingCalendarRows(data: MissionDataset): PublishingCalendarRow[] {
+  const itemById = new Map(data.items.map((item) => [item.id, item.title]));
+  const grouped = new Map<string, PublishingCalendarRow>();
+  const channels: Channel[] = ["youtube", "instagram", "tiktok"];
+
+  for (const slot of data.publishSlots) {
+    const dateKey = slot.scheduledFor.slice(0, 10);
+    const row =
+      grouped.get(dateKey) ??
+      {
+        dateKey,
+        dateLabel: new Date(slot.scheduledFor).toLocaleDateString("pt-BR", { timeZone: "UTC" }),
+        channels: {
+          youtube: { total: 0, scheduled: 0, published: 0, avgChecklist: 0, titles: [] },
+          instagram: { total: 0, scheduled: 0, published: 0, avgChecklist: 0, titles: [] },
+          tiktok: { total: 0, scheduled: 0, published: 0, avgChecklist: 0, titles: [] },
+        },
+      };
+
+    const channelRow = row.channels[slot.channel];
+    channelRow.total += 1;
+    channelRow.scheduled += slot.status === "scheduled" ? 1 : 0;
+    channelRow.published += slot.status === "published" ? 1 : 0;
+    channelRow.avgChecklist = Math.round(((channelRow.avgChecklist * (channelRow.total - 1)) + slot.checklistScore) / channelRow.total);
+    channelRow.titles.push(itemById.get(slot.contentItemId) ?? slot.contentItemId);
+
+    grouped.set(dateKey, row);
+  }
+
+  return [...grouped.values()].sort((a, b) => a.dateKey.localeCompare(b.dateKey)).map((row) => ({
+    ...row,
+    channels: channels.reduce((acc, channel) => {
+      acc[channel] = row.channels[channel];
+      return acc;
+    }, {} as PublishingCalendarRow["channels"]),
+  }));
+}
+
+export function buildChannelHealthRows(data: MissionDataset): ChannelHealthRow[] {
+  const now = Date.now();
+  const channels: Channel[] = ["youtube", "instagram", "tiktok"];
+
+  return channels.map((channel) => {
+    const slots = data.publishSlots.filter((slot) => slot.channel === channel);
+    const published = slots.filter((slot) => slot.status === "published").length;
+    const scheduledOrPublished = slots.filter((slot) => slot.status === "scheduled" || slot.status === "published").length;
+    const avgChecklist = slots.length ? Math.round(slots.reduce((acc, slot) => acc + slot.checklistScore, 0) / slots.length) : 0;
+    const missedSlots = slots.filter((slot) => slot.status !== "published" && new Date(slot.scheduledFor).getTime() < now).length;
+
+    return {
+      channel,
+      totalSlots: slots.length,
+      scheduledOrPublished,
+      published,
+      avgChecklist,
+      readyRate: slots.length ? Math.round((scheduledOrPublished / slots.length) * 100) : 0,
+      missedSlots,
+    };
+  });
+}
+
+export function buildFeedbackLoopRows(data: MissionDataset): FeedbackLoopRow[] {
+  const itemById = new Map(data.items.map((item) => [item.id, item.title]));
+  const now = Date.now();
+
+  return data.assets.map((asset) => {
+    const comments = data.comments.filter((comment) => comment.assetVersionId === asset.id);
+    const openComments = comments.filter((comment) => !comment.resolved);
+    const resolvedComments = comments.filter((comment) => comment.resolved);
+    const participants = new Set(comments.map((comment) => comment.author)).size;
+    const oldestOpen = openComments
+      .map((comment) => new Date(comment.createdAt).getTime())
+      .sort((a, b) => a - b)[0];
+
+    const oldestOpenCommentHours = oldestOpen ? Math.round((now - oldestOpen) / (1000 * 60 * 60)) : undefined;
+    const blocking = openComments.length > 0 && (asset.status === "changes_requested" || asset.status === "pending");
+
+    let feedbackVelocity: FeedbackLoopRow["feedbackVelocity"] = "fast";
+    if ((oldestOpenCommentHours ?? 0) >= 24 || openComments.length >= 3) {
+      feedbackVelocity = "slow";
+    } else if ((oldestOpenCommentHours ?? 0) >= 8 || openComments.length >= 1) {
+      feedbackVelocity = "moderate";
+    }
+
+    return {
+      assetVersionId: asset.id,
+      itemTitle: itemById.get(asset.contentItemId) ?? asset.contentItemId,
+      versionLabel: asset.versionLabel,
+      openComments: openComments.length,
+      resolvedComments: resolvedComments.length,
+      participants,
+      oldestOpenCommentHours,
+      feedbackVelocity,
+      blocking,
+    };
+  });
+}
+
+export function buildOpsDeliverySnapshot(data: MissionDataset): OpsDeliverySnapshot {
+  const now = Date.now();
+  const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+  const throughputPublished7d = data.publishSlots.filter(
+    (slot) => slot.status === "published" && new Date(slot.scheduledFor).getTime() >= sevenDaysAgo,
+  ).length;
+
+  const pastDueSlots = data.publishSlots.filter((slot) => new Date(slot.scheduledFor).getTime() <= now);
+  const publishedPastDue = pastDueSlots.filter((slot) => slot.status === "published").length;
+
+  const totalComments = data.comments.length;
+  const closedComments = data.comments.filter((comment) => comment.resolved).length;
+
+  return {
+    throughputPublished7d,
+    scheduleAdherenceRate: pastDueSlots.length ? Math.round((publishedPastDue / pastDueSlots.length) * 100) : 0,
+    reviewClosureRate: totalComments ? Math.round((closedComments / totalComments) * 100) : 0,
+    avgChecklistScore: data.publishSlots.length
+      ? Math.round(data.publishSlots.reduce((acc, slot) => acc + slot.checklistScore, 0) / data.publishSlots.length)
+      : 0,
+    stageHandoffs: data.stageEvents.length,
+  };
 }
 
 export function buildStageCycleHours(data: MissionDataset) {
