@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, ListTodo, Settings } from "lucide-react";
 
+import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -17,11 +18,12 @@ export function AppSidebar() {
 
   return (
     <aside className="hidden w-64 shrink-0 border-r bg-sidebar/60 md:block">
-      <div className="flex h-16 items-center border-b px-6">
+      <div className="flex h-16 items-center justify-between border-b px-6">
         <div>
           <p className="text-xs uppercase tracking-widest text-muted-foreground">Dashboard</p>
           <h1 className="text-lg font-semibold">Mission Control</h1>
         </div>
+        <ThemeToggle />
       </div>
 
       <nav className="space-y-1 p-4">
