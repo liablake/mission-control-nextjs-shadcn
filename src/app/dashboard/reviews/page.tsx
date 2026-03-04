@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ExternalLink, PlayCircle } from "lucide-react";
+import { AlertTriangle, ExternalLink, PlayCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { buildJourneyRows, buildReviewSlaRows } from "@/lib/mission-insights";
 import { getMissionDataset } from "@/lib/mission-data";
 
 function fmtTimecode(seconds?: number) {
@@ -15,52 +16,88 @@ function fmtTimecode(seconds?: number) {
 
 export default async function ReviewsPage() {
   const data = await getMissionDataset();
+  const journeyRows = buildJourneyRows(data);
+  const slaRows = buildReviewSlaRows(data).sort((a, b) => (b.oldestOpenCommentHours ?? 0) - (a.oldestOpenCommentHours ?? 0));
 
   return (
     <div className="space-y-6 p-6">
       <div>
         <h2 className="text-2xl font-semibold">Review & Comments</h2>
         <p className="text-sm text-muted-foreground">
-          Preview de versões, comentários por timecode e ciclo de revisão com foco em resolução rápida.
+          Preview de versões, comentários por timecode e aprovação por gate para evitar handoffs cegos.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Versões de assets</CardTitle>
+          <CardTitle className="text-base">Board de aprovação (preview → review → publish)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {journeyRows.map((row) => (
+            <div key={row.itemId} className="rounded-lg border p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+                <p className="font-medium">{row.title}</p>
+                <div className="flex items-center gap-2">
+                  <Badge variant={row.approvalGate === "ready" ? "default" : row.approvalGate === "needs_review" ? "outline" : "secondary"}>
+                    {row.approvalGate}
+                  </Badge>
+                  <Badge variant="secondary">owner: {row.owner}</Badge>
+                </div>
+              </div>
+
+              <div className="mb-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span>versão: {row.latestVersionLabel ?? "—"}</span>
+                <span>status: {row.latestAssetStatus ?? "—"}</span>
+                <span>comentários abertos: {row.unresolvedComments}</span>
+                <span>
+                  canais prontos: {row.approvedChannels}/{row.totalChannels}
+                </span>
+                {row.latestPreviewUrl && (
+                  <Link href={row.latestPreviewUrl} target="_blank" className="inline-flex items-center gap-1 text-primary hover:underline">
+                    <PlayCircle className="h-3 w-3" /> preview <ExternalLink className="h-3 w-3" />
+                  </Link>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-1">
+                {row.steps.map((step) => (
+                  <Badge key={step.stage} variant={step.state === "active" ? "default" : "outline"} className="capitalize">
+                    {step.stage}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">SLA operacional de review</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Item</TableHead>
                 <TableHead>Versão</TableHead>
-                <TableHead>Formato</TableHead>
-                <TableHead>Duração</TableHead>
-                <TableHead>Preview</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Comentários abertos</TableHead>
+                <TableHead>Horas em aberto</TableHead>
+                <TableHead>Risco</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.assets.map((asset) => (
-                <TableRow key={asset.id}>
-                  <TableCell>{asset.versionLabel}</TableCell>
-                  <TableCell>{asset.format}</TableCell>
-                  <TableCell>{asset.durationSec ? `${Math.round(asset.durationSec / 60)} min` : "—"}</TableCell>
+              {slaRows.map((row) => (
+                <TableRow key={row.assetVersionId}>
+                  <TableCell>{row.itemTitle}</TableCell>
+                  <TableCell>{row.versionLabel}</TableCell>
+                  <TableCell>{row.unresolvedComments}</TableCell>
+                  <TableCell>{row.oldestOpenCommentHours ?? 0}h</TableCell>
                   <TableCell>
-                    {asset.previewUrl ? (
-                      <Link
-                        href={asset.previewUrl}
-                        target="_blank"
-                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        <PlayCircle className="h-3 w-3" /> abrir <ExternalLink className="h-3 w-3" />
-                      </Link>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={asset.status === "approved" ? "default" : "secondary"}>{asset.status}</Badge>
+                    <Badge variant={row.risk === "high" ? "destructive" : row.risk === "medium" ? "outline" : "secondary"}>
+                      {row.risk === "high" && <AlertTriangle className="mr-1 h-3 w-3" />}
+                      {row.risk}
+                    </Badge>
                   </TableCell>
                 </TableRow>
               ))}

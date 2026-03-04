@@ -1,5 +1,7 @@
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, DatabaseZap, MessageSquareQuote, ShieldCheck, Video } from "lucide-react";
 
+import { buildJourneyRows } from "@/lib/mission-insights";
+
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buildMissionDataQuality, getMissionDataset } from "@/lib/mission-data";
@@ -7,10 +9,13 @@ import { buildMissionDataQuality, getMissionDataset } from "@/lib/mission-data";
 export default async function DashboardPage() {
   const data = await getMissionDataset();
   const quality = buildMissionDataQuality(data);
+  const journeyRows = buildJourneyRows(data);
 
   const overdueReviews = data.assets.filter((a) => a.status === "changes_requested").length;
   const unresolvedComments = data.comments.filter((c) => !c.resolved).length;
   const readyToPublish = data.publishSlots.filter((s) => s.status === "scheduled").length;
+  const blockedApprovalGates = journeyRows.filter((row) => row.approvalGate === "blocked").length;
+  const needsReviewGates = journeyRows.filter((row) => row.approvalGate === "needs_review").length;
   const avgChecklist =
     data.publishSlots.length > 0
       ? Math.round(data.publishSlots.reduce((acc, s) => acc + s.checklistScore, 0) / data.publishSlots.length)
@@ -76,6 +81,8 @@ export default async function DashboardPage() {
             <Badge variant="outline">Changes requested: {overdueReviews}</Badge>
             <Badge variant="outline">Comentários não resolvidos: {unresolvedComments}</Badge>
             <Badge variant="outline">Slots em rascunho: {data.publishSlots.filter((s) => s.status === "draft").length}</Badge>
+            <Badge variant="outline">Gate bloqueado: {blockedApprovalGates}</Badge>
+            <Badge variant="outline">Gate aguardando review: {needsReviewGates}</Badge>
           </CardContent>
         </Card>
       </div>
