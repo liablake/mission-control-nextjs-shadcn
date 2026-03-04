@@ -7,43 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { statusLabel, tasks, type Status, type Task } from "@/lib/tasks";
 
-const statuses = ["todo", "doing", "done"] as const;
-type Status = (typeof statuses)[number];
-
-type Task = {
-  id: string;
-  title: string;
-  description: string;
-  status: Status;
-};
-
-const statusLabel: Record<Status, string> = {
-  todo: "Todo",
-  doing: "Doing",
-  done: "Done",
-};
-
-const tasks: Task[] = [
-  {
-    id: "1",
-    title: "Definir escopo do MVP",
-    description: "Mapear funcionalidades essenciais do Mission Control.",
-    status: "todo",
-  },
-  {
-    id: "2",
-    title: "Construir layout base",
-    description: "Sidebar clássica com múltiplas páginas no dashboard.",
-    status: "doing",
-  },
-  {
-    id: "3",
-    title: "Criar board de tarefas",
-    description: "Implementar views Kanban e Lista para acompanhamento.",
-    status: "done",
-  },
-];
+const statuses: Status[] = ["todo", "doing", "done"];
 
 export function MissionControlBoard() {
   const [view, setView] = useState<"kanban" | "list">("kanban");
