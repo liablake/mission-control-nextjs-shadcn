@@ -1,27 +1,79 @@
+import Link from "next/link";
+
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { buildChannelHealthRows, buildJourneyRows, buildPublishingCalendarRows, buildReleaseControlRows } from "@/lib/mission-insights";
-import { getMissionDataset, type Channel } from "@/lib/mission-data";
+import { getMissionDataset, type Channel, type PipelineStage } from "@/lib/mission-data";
 
 const channels: Channel[] = ["youtube", "instagram", "tiktok"];
 
-export default async function PublishingPage() {
+export default async function PublishingPage({
+  searchParams,
+}: {
+  searchParams?: { channel?: Channel; stage?: PipelineStage };
+}) {
   const data = await getMissionDataset();
-  const journeyRows = buildJourneyRows(data);
-  const calendarRows = buildPublishingCalendarRows(data);
-  const channelHealthRows = buildChannelHealthRows(data);
-  const releaseControlRows = buildReleaseControlRows(data);
+  const channelFilter = searchParams?.channel;
+  const stageFilter = searchParams?.stage;
 
-  const slotMap = new Map(data.publishSlots.map((slot) => [`${slot.contentItemId}:${slot.channel}`, slot]));
+  const filteredSlots = channelFilter ? data.publishSlots.filter((slot) => slot.channel === channelFilter) : data.publishSlots;
+  const itemIdsWithSlot = new Set(filteredSlots.map((slot) => slot.contentItemId));
+
+  const filteredItems = data.items.filter((item) => {
+    if (stageFilter && item.stage !== stageFilter) return false;
+    if (channelFilter && !itemIdsWithSlot.has(item.id)) return false;
+    return true;
+  });
+
+  const filteredItemIds = new Set(filteredItems.map((item) => item.id));
+  const filteredAssets = data.assets.filter((asset) => filteredItemIds.has(asset.contentItemId));
+  const filteredAssetIds = new Set(filteredAssets.map((asset) => asset.id));
+
+  const filteredData = {
+    ...data,
+    items: filteredItems,
+    assets: filteredAssets,
+    comments: data.comments.filter((comment) => filteredAssetIds.has(comment.assetVersionId)),
+    publishSlots: filteredSlots.filter((slot) => filteredItemIds.has(slot.contentItemId)),
+    stageEvents: data.stageEvents.filter((event) => filteredItemIds.has(event.contentItemId)),
+  };
+
+  const journeyRows = buildJourneyRows(filteredData);
+  const calendarRows = buildPublishingCalendarRows(filteredData);
+  const channelHealthRows = buildChannelHealthRows(filteredData);
+  const releaseControlRows = buildReleaseControlRows(filteredData);
+  const stages: PipelineStage[] = ["ideation", "planning", "production", "review", "publishing"];
+
+  const slotMap = new Map(filteredData.publishSlots.map((slot) => [`${slot.contentItemId}:${slot.channel}`, slot]));
 
   return (
     <div className="space-y-6 p-6">
-      <div>
+      <div className="space-y-2">
         <h2 className="text-2xl font-semibold">Publishing Queue</h2>
         <p className="text-sm text-muted-foreground">
           Planejamento editorial read-first com calendário e execução por canal, mantendo gate de aprovação visível.
         </p>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge variant={!channelFilter ? "default" : "outline"}>
+            <Link href="/dashboard/publishing">canal: todos</Link>
+          </Badge>
+          {channels.map((channel) => (
+            <Badge key={channel} variant={channelFilter === channel ? "default" : "outline"} className="capitalize">
+              <Link href={`/dashboard/publishing?channel=${channel}${stageFilter ? `&stage=${stageFilter}` : ""}`}>{channel}</Link>
+            </Badge>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge variant={!stageFilter ? "default" : "outline"}>
+            <Link href={channelFilter ? `/dashboard/publishing?channel=${channelFilter}` : "/dashboard/publishing"}>stage: todos</Link>
+          </Badge>
+          {stages.map((stage) => (
+            <Badge key={stage} variant={stageFilter === stage ? "default" : "outline"} className="capitalize">
+              <Link href={`/dashboard/publishing?stage=${stage}${channelFilter ? `&channel=${channelFilter}` : ""}`}>{stage}</Link>
+            </Badge>
+          ))}
+        </div>
       </div>
 
       <Card>

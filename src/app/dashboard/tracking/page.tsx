@@ -3,7 +3,7 @@ import { Activity, ArrowRight, Timer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { buildOpsDeliverySnapshot, buildStageCycleHours } from "@/lib/mission-insights";
+import { buildOpsDeliverySnapshot, buildStageCycleHours, buildStageSlaBreachRows } from "@/lib/mission-insights";
 import { getMissionDataset } from "@/lib/mission-data";
 
 function formatUtc(value: string) {
@@ -13,6 +13,7 @@ function formatUtc(value: string) {
 export default async function TrackingPage() {
   const data = await getMissionDataset();
   const cycleRows = buildStageCycleHours(data).sort((a, b) => b.cycleHours - a.cycleHours);
+  const stageSlaBreaches = buildStageSlaBreachRows(data);
   const deliverySnapshot = buildOpsDeliverySnapshot(data);
 
   const avgCycleHours = cycleRows.length
@@ -74,7 +75,7 @@ export default async function TrackingPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Throughput 7d (publicados)</CardTitle>
@@ -97,6 +98,14 @@ export default async function TrackingPage() {
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold">{deliverySnapshot.stageHandoffs}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">SLA breach por etapa</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{stageSlaBreaches.length}</p>
           </CardContent>
         </Card>
       </div>
@@ -128,6 +137,47 @@ export default async function TrackingPage() {
                   </TableCell>
                 </TableRow>
               ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">SLA breach por etapa (itens acima do limite)</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Item</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>Etapa</TableHead>
+                <TableHead>Tempo na etapa</TableHead>
+                <TableHead>Limite</TableHead>
+                <TableHead>Estouro</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {stageSlaBreaches.map((row) => (
+                <TableRow key={row.itemId}>
+                  <TableCell>{row.title}</TableCell>
+                  <TableCell>{row.owner}</TableCell>
+                  <TableCell className="capitalize">{row.stage}</TableCell>
+                  <TableCell>{row.hoursInStage}h</TableCell>
+                  <TableCell>{row.thresholdHours}h</TableCell>
+                  <TableCell>
+                    <Badge variant="destructive">+{row.breachByHours}h</Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {stageSlaBreaches.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-sm text-muted-foreground">
+                    Nenhum item acima do SLA por etapa.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

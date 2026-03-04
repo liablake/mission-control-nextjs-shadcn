@@ -123,6 +123,16 @@ export type ReleaseControlRow = {
   nextAction: string;
 };
 
+export type StageSlaBreachRow = {
+  itemId: string;
+  title: string;
+  owner: string;
+  stage: PipelineStage;
+  thresholdHours: number;
+  hoursInStage: number;
+  breachByHours: number;
+};
+
 function stageIndex(stage: PipelineStage) {
   return journeyOrder.indexOf(stage);
 }
@@ -508,6 +518,51 @@ export function buildReleaseControlRows(data: MissionDataset): ReleaseControlRow
       }
       return a.scheduleConfidence - b.scheduleConfidence;
     });
+}
+
+export function buildStageSlaBreachRows(data: MissionDataset): StageSlaBreachRow[] {
+  const now = Date.now();
+  const thresholdByStage: Record<PipelineStage, number> = {
+    ideation: 24,
+    planning: 24,
+    production: 48,
+    review: 24,
+    publishing: 12,
+  };
+
+  const eventsByItem = new Map<string, MissionDataset["stageEvents"]>();
+  for (const event of data.stageEvents) {
+    const existing = eventsByItem.get(event.contentItemId) ?? [];
+    existing.push(event);
+    eventsByItem.set(event.contentItemId, existing);
+  }
+
+  return data.items
+    .map((item) => {
+      const ordered = (eventsByItem.get(item.id) ?? []).sort(
+        (a, b) => new Date(a.changedAt).getTime() - new Date(b.changedAt).getTime(),
+      );
+
+      const enteredCurrentStageAt = [...ordered]
+        .reverse()
+        .find((event) => event.toStage === item.stage)?.changedAt ?? item.createdAt;
+
+      const hoursInStage = Math.max(0, Math.round((now - new Date(enteredCurrentStageAt).getTime()) / (1000 * 60 * 60)));
+      const thresholdHours = thresholdByStage[item.stage];
+      const breachByHours = Math.max(0, hoursInStage - thresholdHours);
+
+      return {
+        itemId: item.id,
+        title: item.title,
+        owner: item.owner,
+        stage: item.stage,
+        thresholdHours,
+        hoursInStage,
+        breachByHours,
+      };
+    })
+    .filter((row) => row.breachByHours > 0)
+    .sort((a, b) => b.breachByHours - a.breachByHours);
 }
 
 export function buildStageCycleHours(data: MissionDataset) {

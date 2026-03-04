@@ -12,7 +12,7 @@ import {
   buildReviewerWorkload,
   buildReviewSlaRows,
 } from "@/lib/mission-insights";
-import { getMissionDataset } from "@/lib/mission-data";
+import { getMissionDataset, type PipelineStage } from "@/lib/mission-data";
 
 function fmtTimecode(seconds?: number) {
   if (seconds === undefined) return "—";
@@ -27,25 +27,78 @@ function formatDueInHours(value?: number) {
   return `${value}h restantes`;
 }
 
-export default async function ReviewsPage() {
+export default async function ReviewsPage({
+  searchParams,
+}: {
+  searchParams?: { owner?: string; stage?: PipelineStage };
+}) {
   const data = await getMissionDataset();
-  const journeyRows = buildJourneyRows(data);
-  const slaRows = buildReviewSlaRows(data).sort((a, b) => (b.oldestOpenCommentHours ?? 0) - (a.oldestOpenCommentHours ?? 0));
-  const dailyOpsQueue = buildDailyOpsQueue(data);
+  const ownerFilter = searchParams?.owner;
+  const stageFilter = searchParams?.stage;
+
+  const filteredItems = data.items.filter((item) => {
+    if (ownerFilter && item.owner !== ownerFilter) return false;
+    if (stageFilter && item.stage !== stageFilter) return false;
+    return true;
+  });
+
+  const filteredItemIds = new Set(filteredItems.map((item) => item.id));
+  const filteredAssets = data.assets.filter((asset) => filteredItemIds.has(asset.contentItemId));
+  const filteredAssetIds = new Set(filteredAssets.map((asset) => asset.id));
+
+  const filteredData = {
+    ...data,
+    items: filteredItems,
+    assets: filteredAssets,
+    comments: data.comments.filter((comment) => filteredAssetIds.has(comment.assetVersionId)),
+    publishSlots: data.publishSlots.filter((slot) => filteredItemIds.has(slot.contentItemId)),
+    stageEvents: data.stageEvents.filter((event) => filteredItemIds.has(event.contentItemId)),
+  };
+
+  const journeyRows = buildJourneyRows(filteredData);
+  const slaRows = buildReviewSlaRows(filteredData).sort((a, b) => (b.oldestOpenCommentHours ?? 0) - (a.oldestOpenCommentHours ?? 0));
+  const dailyOpsQueue = buildDailyOpsQueue(filteredData);
   const workloadRows = buildReviewerWorkload(dailyOpsQueue);
-  const feedbackRows = buildFeedbackLoopRows(data).sort((a, b) => (b.oldestOpenCommentHours ?? 0) - (a.oldestOpenCommentHours ?? 0));
-  const reviewCoverage = buildReviewCoverageSnapshot(data);
+  const feedbackRows = buildFeedbackLoopRows(filteredData).sort((a, b) => (b.oldestOpenCommentHours ?? 0) - (a.oldestOpenCommentHours ?? 0));
+  const reviewCoverage = buildReviewCoverageSnapshot(filteredData);
+
+  const owners = [...new Set(data.items.map((item) => item.owner))].sort();
+  const stages: PipelineStage[] = ["ideation", "planning", "production", "review", "publishing"];
 
   const blockingFeedback = feedbackRows.filter((row) => row.blocking).length;
   const totalOpenComments = feedbackRows.reduce((acc, row) => acc + row.openComments, 0);
 
   return (
     <div className="space-y-6 p-6">
-      <div>
+      <div className="space-y-2">
         <h2 className="text-2xl font-semibold">Review & Comments</h2>
         <p className="text-sm text-muted-foreground">
           Preview de versões, comentários por timecode e feedback loop por asset para evitar handoffs cegos.
         </p>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge variant={!ownerFilter ? "default" : "outline"}>
+            <Link href="/dashboard/reviews">owner: todos</Link>
+          </Badge>
+          {owners.map((owner) => (
+            <Badge key={owner} variant={ownerFilter === owner ? "default" : "outline"}>
+              <Link href={`/dashboard/reviews?owner=${encodeURIComponent(owner)}${stageFilter ? `&stage=${stageFilter}` : ""}`}>
+                owner: {owner}
+              </Link>
+            </Badge>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge variant={!stageFilter ? "default" : "outline"}>
+            <Link href={ownerFilter ? `/dashboard/reviews?owner=${encodeURIComponent(ownerFilter)}` : "/dashboard/reviews"}>stage: todos</Link>
+          </Badge>
+          {stages.map((stage) => (
+            <Badge key={stage} variant={stageFilter === stage ? "default" : "outline"} className="capitalize">
+              <Link href={`/dashboard/reviews?stage=${stage}${ownerFilter ? `&owner=${encodeURIComponent(ownerFilter)}` : ""}`}>
+                {stage}
+              </Link>
+            </Badge>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -78,7 +131,7 @@ export default async function ReviewsPage() {
             <CardTitle className="text-base">Cobertura de preview</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{reviewCoverage.assetsWithPreview}/{data.assets.length}</p>
+            <p className="text-3xl font-bold">{reviewCoverage.assetsWithPreview}/{filteredData.assets.length}</p>
             <p className="text-xs text-muted-foreground">pendentes sem preview: {reviewCoverage.pendingWithoutPreview}</p>
           </CardContent>
         </Card>
@@ -285,8 +338,8 @@ export default async function ReviewsPage() {
           <CardTitle className="text-base">Threads de comentários por asset</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {data.assets.map((asset) => {
-            const thread = data.comments.filter((comment) => comment.assetVersionId === asset.id);
+          {filteredData.assets.map((asset) => {
+            const thread = filteredData.comments.filter((comment) => comment.assetVersionId === asset.id);
             const openCount = thread.filter((comment) => !comment.resolved).length;
 
             return (
