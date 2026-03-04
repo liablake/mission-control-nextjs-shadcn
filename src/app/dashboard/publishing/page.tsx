@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { buildChannelHealthRows, buildJourneyRows, buildPublishingCalendarRows } from "@/lib/mission-insights";
+import { buildChannelHealthRows, buildJourneyRows, buildPublishingCalendarRows, buildReleaseControlRows } from "@/lib/mission-insights";
 import { getMissionDataset, type Channel } from "@/lib/mission-data";
 
 const channels: Channel[] = ["youtube", "instagram", "tiktok"];
@@ -11,6 +11,7 @@ export default async function PublishingPage() {
   const journeyRows = buildJourneyRows(data);
   const calendarRows = buildPublishingCalendarRows(data);
   const channelHealthRows = buildChannelHealthRows(data);
+  const releaseControlRows = buildReleaseControlRows(data);
 
   const slotMap = new Map(data.publishSlots.map((slot) => [`${slot.contentItemId}:${slot.channel}`, slot]));
 
@@ -113,6 +114,52 @@ export default async function PublishingPage() {
                       {row.approvalGate}
                     </Badge>
                   </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Controle de release até publicação (YouTube/Instagram/TikTok)</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Conteúdo</TableHead>
+                <TableHead>Estágio</TableHead>
+                <TableHead>Versão</TableHead>
+                <TableHead>Comentários</TableHead>
+                <TableHead>Canais prontos</TableHead>
+                <TableHead>Confiança</TableHead>
+                <TableHead>Risco</TableHead>
+                <TableHead>Próxima ação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {releaseControlRows.map((row) => (
+                <TableRow key={row.itemId}>
+                  <TableCell>{row.title}</TableCell>
+                  <TableCell className="capitalize">{row.stage}</TableCell>
+                  <TableCell>{row.latestVersionLabel ?? "—"}</TableCell>
+                  <TableCell>{row.openComments}</TableCell>
+                  <TableCell>
+                    {row.channelsReady}/{row.channelsPlanned} (pub: {row.channelsPublished})
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={row.scheduleConfidence >= 75 ? "default" : row.scheduleConfidence >= 50 ? "outline" : "secondary"}>
+                      {row.scheduleConfidence}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={row.pipelineRisk === "high" ? "destructive" : row.pipelineRisk === "medium" ? "outline" : "secondary"}>
+                      {row.pipelineRisk}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{row.nextAction}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

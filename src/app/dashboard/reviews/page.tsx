@@ -8,6 +8,7 @@ import {
   buildDailyOpsQueue,
   buildFeedbackLoopRows,
   buildJourneyRows,
+  buildReviewCoverageSnapshot,
   buildReviewerWorkload,
   buildReviewSlaRows,
 } from "@/lib/mission-insights";
@@ -33,6 +34,7 @@ export default async function ReviewsPage() {
   const dailyOpsQueue = buildDailyOpsQueue(data);
   const workloadRows = buildReviewerWorkload(dailyOpsQueue);
   const feedbackRows = buildFeedbackLoopRows(data).sort((a, b) => (b.oldestOpenCommentHours ?? 0) - (a.oldestOpenCommentHours ?? 0));
+  const reviewCoverage = buildReviewCoverageSnapshot(data);
 
   const blockingFeedback = feedbackRows.filter((row) => row.blocking).length;
   const totalOpenComments = feedbackRows.reduce((acc, row) => acc + row.openComments, 0);
@@ -46,7 +48,7 @@ export default async function ReviewsPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Assets em feedback loop</CardTitle>
@@ -69,6 +71,24 @@ export default async function ReviewsPage() {
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold">{blockingFeedback}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Cobertura de preview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{reviewCoverage.assetsWithPreview}/{data.assets.length}</p>
+            <p className="text-xs text-muted-foreground">pendentes sem preview: {reviewCoverage.pendingWithoutPreview}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Comentários com timecode</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold">{reviewCoverage.commentsWithTimecodeRate}%</p>
+            <p className="text-xs text-muted-foreground">média abertos/asset: {reviewCoverage.avgOpenCommentsPerAsset}</p>
           </CardContent>
         </Card>
       </div>

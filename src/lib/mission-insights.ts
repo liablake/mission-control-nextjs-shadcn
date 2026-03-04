@@ -101,6 +101,28 @@ export type OpsDeliverySnapshot = {
   stageHandoffs: number;
 };
 
+export type ReviewCoverageSnapshot = {
+  assetsWithPreview: number;
+  pendingWithoutPreview: number;
+  commentsWithTimecodeRate: number;
+  avgOpenCommentsPerAsset: number;
+};
+
+export type ReleaseControlRow = {
+  itemId: string;
+  title: string;
+  stage: PipelineStage;
+  latestVersionLabel?: string;
+  latestAssetStatus?: "pending" | "changes_requested" | "approved";
+  openComments: number;
+  channelsPlanned: number;
+  channelsReady: number;
+  channelsPublished: number;
+  scheduleConfidence: number;
+  pipelineRisk: "low" | "medium" | "high";
+  nextAction: string;
+};
+
 function stageIndex(stage: PipelineStage) {
   return journeyOrder.indexOf(stage);
 }
@@ -401,6 +423,91 @@ export function buildOpsDeliverySnapshot(data: MissionDataset): OpsDeliverySnaps
       : 0,
     stageHandoffs: data.stageEvents.length,
   };
+}
+
+export function buildReviewCoverageSnapshot(data: MissionDataset): ReviewCoverageSnapshot {
+  const assetsWithPreview = data.assets.filter((asset) => Boolean(asset.previewUrl)).length;
+  const pendingWithoutPreview = data.assets.filter(
+    (asset) => asset.status !== "approved" && !asset.previewUrl,
+  ).length;
+
+  const commentsWithTimecode = data.comments.filter((comment) => comment.timecodeSec !== undefined).length;
+  const commentsWithTimecodeRate = data.comments.length
+    ? Math.round((commentsWithTimecode / data.comments.length) * 100)
+    : 0;
+
+  const totalOpen = data.comments.filter((comment) => !comment.resolved).length;
+  const avgOpenCommentsPerAsset = data.assets.length ? Number((totalOpen / data.assets.length).toFixed(1)) : 0;
+
+  return {
+    assetsWithPreview,
+    pendingWithoutPreview,
+    commentsWithTimecodeRate,
+    avgOpenCommentsPerAsset,
+  };
+}
+
+export function buildReleaseControlRows(data: MissionDataset): ReleaseControlRow[] {
+  const journeyRows = buildJourneyRows(data);
+
+  return journeyRows
+    .map((row) => {
+      const slots = data.publishSlots.filter((slot) => slot.contentItemId === row.itemId);
+      const channelsReady = slots.filter((slot) => slot.status === "scheduled" || slot.status === "published").length;
+      const channelsPublished = slots.filter((slot) => slot.status === "published").length;
+      const avgChecklist = slots.length
+        ? Math.round(slots.reduce((acc, slot) => acc + slot.checklistScore, 0) / slots.length)
+        : 0;
+
+      const scheduleConfidence = Math.max(
+        0,
+        Math.min(
+          100,
+          avgChecklist +
+            (row.approvalGate === "ready" ? 15 : row.approvalGate === "needs_review" ? -10 : -20) +
+            (slots.length ? Math.round((channelsReady / slots.length) * 20) : -10) -
+            row.unresolvedComments * 8,
+        ),
+      );
+
+      let pipelineRisk: ReleaseControlRow["pipelineRisk"] = "low";
+      if (row.approvalGate === "blocked" || row.unresolvedComments >= 3 || scheduleConfidence < 50) {
+        pipelineRisk = "high";
+      } else if (row.approvalGate === "needs_review" || row.unresolvedComments >= 1 || scheduleConfidence < 75) {
+        pipelineRisk = "medium";
+      }
+
+      const nextAction =
+        row.approvalGate === "blocked"
+          ? "Aprovar versão final e completar checklist por canal"
+          : row.approvalGate === "needs_review"
+            ? "Resolver comentários abertos antes de agendar"
+            : channelsPublished < slots.length
+              ? "Executar publicação nos canais já prontos"
+              : "Monitorar performance e manter cadência";
+
+      return {
+        itemId: row.itemId,
+        title: row.title,
+        stage: row.currentStage,
+        latestVersionLabel: row.latestVersionLabel,
+        latestAssetStatus: row.latestAssetStatus,
+        openComments: row.unresolvedComments,
+        channelsPlanned: slots.length,
+        channelsReady,
+        channelsPublished,
+        scheduleConfidence,
+        pipelineRisk,
+        nextAction,
+      };
+    })
+    .sort((a, b) => {
+      const riskWeight = { high: 3, medium: 2, low: 1 } as const;
+      if (riskWeight[b.pipelineRisk] !== riskWeight[a.pipelineRisk]) {
+        return riskWeight[b.pipelineRisk] - riskWeight[a.pipelineRisk];
+      }
+      return a.scheduleConfidence - b.scheduleConfidence;
+    });
 }
 
 export function buildStageCycleHours(data: MissionDataset) {
