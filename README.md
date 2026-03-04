@@ -11,19 +11,22 @@ npm run dev
 
 App em: <http://localhost:3000>
 
-## Sprint 1 (read-heavy audiovisual)
+## Sprint 1-2 (read-heavy audiovisual)
 
-Novas telas no dashboard:
+Telas no dashboard:
 - `/dashboard/pipeline`
 - `/dashboard/reviews`
+- `/dashboard/tracking`
 - `/dashboard/publishing`
 
 Dataset principal em `src/lib/mission-data.ts`:
 - usa Supabase quando `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` estão definidos
 - fallback para dataset local de demonstração quando env não está configurado
+- inclui validações de qualidade/auditabilidade (`buildMissionDataQuality`)
 
 Pesquisa de benchmark documentada em:
 - `docs/research-sprint1-read-heavy-benchmarks.md`
+- `docs/research-sprint2-read-heavy-ux-workflows.md`
 
 ## Supabase local
 
@@ -45,9 +48,17 @@ Isso cria as tabelas:
 - `projects`
 - `tasks`
 - `task_status_history`
-- type `task_status` (`todo`, `doing`, `done`)
+- `content_items`
+- `asset_versions`
+- `review_comments`
+- `publish_slots`
+- `pipeline_stage_events`
+- types: `task_status`, `pipeline_stage`, `review_status`, `publish_channel`, `publish_status`
 
-Migration: `supabase/migrations/202603030001_init_schema.sql`
+Migrations:
+- `supabase/migrations/202603030001_init_schema.sql`
+- `supabase/migrations/202603040350_pipeline_read_models.sql`
+- `supabase/migrations/202603040455_stage_tracking.sql`
 
 ### 3) Parar stack local
 

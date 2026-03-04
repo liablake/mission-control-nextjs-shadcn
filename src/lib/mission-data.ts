@@ -21,6 +21,7 @@ export type AssetVersion = {
   format: string;
   durationSec?: number;
   status: ReviewStatus;
+  previewUrl?: string;
   uploadedAt: string;
 };
 
@@ -43,11 +44,32 @@ export type PublishSlot = {
   checklistScore: number;
 };
 
+export type StageEvent = {
+  id: string;
+  contentItemId: string;
+  fromStage?: PipelineStage;
+  toStage: PipelineStage;
+  actor: string;
+  note?: string;
+  changedAt: string;
+};
+
 export type MissionDataset = {
   items: ContentItem[];
   assets: AssetVersion[];
   comments: ReviewComment[];
   publishSlots: PublishSlot[];
+  stageEvents: StageEvent[];
+};
+
+export type MissionDataQuality = {
+  source: "supabase" | "sample";
+  fetchedAt: string;
+  checks: Array<{
+    label: string;
+    ok: boolean;
+    details: string;
+  }>;
 };
 
 const sampleData: MissionDataset = {
@@ -95,6 +117,7 @@ const sampleData: MissionDataset = {
       format: "16:9",
       durationSec: 402,
       status: "changes_requested",
+      previewUrl: "https://example.com/previews/c1-v3",
       uploadedAt: "2026-03-03T20:10:00Z",
     },
     {
@@ -104,6 +127,7 @@ const sampleData: MissionDataset = {
       format: "9:16",
       durationSec: 58,
       status: "approved",
+      previewUrl: "https://example.com/previews/c1-v2",
       uploadedAt: "2026-03-02T15:00:00Z",
     },
     {
@@ -113,6 +137,7 @@ const sampleData: MissionDataset = {
       format: "16:9",
       durationSec: 515,
       status: "pending",
+      previewUrl: "https://example.com/previews/c2-v1",
       uploadedAt: "2026-03-03T22:42:00Z",
     },
   ],
@@ -170,6 +195,44 @@ const sampleData: MissionDataset = {
       checklistScore: 55,
     },
   ],
+  stageEvents: [
+    {
+      id: "e1",
+      contentItemId: "c1",
+      fromStage: "ideation",
+      toStage: "planning",
+      actor: "Ana",
+      note: "Aprovado briefing + CTA principal.",
+      changedAt: "2026-03-01T10:00:00Z",
+    },
+    {
+      id: "e2",
+      contentItemId: "c1",
+      fromStage: "planning",
+      toStage: "production",
+      actor: "Leo",
+      note: "Roteiro congelado para gravação.",
+      changedAt: "2026-03-01T18:20:00Z",
+    },
+    {
+      id: "e3",
+      contentItemId: "c1",
+      fromStage: "production",
+      toStage: "review",
+      actor: "Leo",
+      note: "Export v3 enviado para revisão.",
+      changedAt: "2026-03-03T20:10:00Z",
+    },
+    {
+      id: "e4",
+      contentItemId: "c2",
+      fromStage: "planning",
+      toStage: "production",
+      actor: "Shark",
+      note: "Plano de captação validado.",
+      changedAt: "2026-03-03T08:40:00Z",
+    },
+  ],
 };
 
 export async function getMissionDataset(): Promise<MissionDataset> {
@@ -179,11 +242,12 @@ export async function getMissionDataset(): Promise<MissionDataset> {
     return sampleData;
   }
 
-  const [{ data: items }, { data: assets }, { data: comments }, { data: slots }] = await Promise.all([
+  const [{ data: items }, { data: assets }, { data: comments }, { data: slots }, { data: stageEvents }] = await Promise.all([
     supabase.from("content_items").select("*").order("created_at", { ascending: false }),
     supabase.from("asset_versions").select("*").order("uploaded_at", { ascending: false }),
     supabase.from("review_comments").select("*").order("created_at", { ascending: false }),
     supabase.from("publish_slots").select("*").order("scheduled_for", { ascending: true }),
+    supabase.from("pipeline_stage_events").select("*").order("changed_at", { ascending: false }),
   ]);
 
   return {
@@ -205,6 +269,7 @@ export async function getMissionDataset(): Promise<MissionDataset> {
         format: row.format,
         durationSec: row.duration_sec ?? undefined,
         status: row.status,
+        previewUrl: row.preview_url ?? undefined,
         uploadedAt: row.uploaded_at,
       })) ?? sampleData.assets,
     comments:
@@ -226,5 +291,46 @@ export async function getMissionDataset(): Promise<MissionDataset> {
         status: row.status,
         checklistScore: row.checklist_score,
       })) ?? sampleData.publishSlots,
+    stageEvents:
+      stageEvents?.map((row) => ({
+        id: row.id,
+        contentItemId: row.content_item_id,
+        fromStage: row.from_stage ?? undefined,
+        toStage: row.to_stage,
+        actor: row.actor,
+        note: row.note ?? undefined,
+        changedAt: row.changed_at,
+      })) ?? sampleData.stageEvents,
+  };
+}
+
+export function buildMissionDataQuality(dataset: MissionDataset): MissionDataQuality {
+  const checks: MissionDataQuality["checks"] = [
+    {
+      label: "Integridade relacional de comentários",
+      ok: dataset.comments.every((comment) => dataset.assets.some((asset) => asset.id === comment.assetVersionId)),
+      details: `${dataset.comments.length} comentários validados contra ${dataset.assets.length} versões`,
+    },
+    {
+      label: "Checklist score dentro de 0-100",
+      ok: dataset.publishSlots.every((slot) => slot.checklistScore >= 0 && slot.checklistScore <= 100),
+      details: `${dataset.publishSlots.length} slots auditados`,
+    },
+    {
+      label: "Rastreamento por etapa presente",
+      ok: dataset.stageEvents.length >= Math.max(1, Math.floor(dataset.items.length / 2)),
+      details: `${dataset.stageEvents.length} eventos para ${dataset.items.length} itens`,
+    },
+    {
+      label: "Preview disponível para revisão",
+      ok: dataset.assets.filter((asset) => asset.status !== "approved").every((asset) => Boolean(asset.previewUrl)),
+      details: `${dataset.assets.filter((asset) => Boolean(asset.previewUrl)).length}/${dataset.assets.length} versões com preview`,
+    },
+  ];
+
+  return {
+    source: hasSupabaseEnv ? "supabase" : "sample",
+    fetchedAt: new Date().toISOString(),
+    checks,
   };
 }

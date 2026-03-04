@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListTodo, MessageSquareQuote, Rocket, Settings, Workflow } from "lucide-react";
+import { Activity, LayoutDashboard, ListTodo, MessageSquareQuote, Rocket, Settings, Workflow } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ const items = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/pipeline", label: "Pipeline", icon: Workflow },
   { href: "/dashboard/reviews", label: "Review", icon: MessageSquareQuote },
+  { href: "/dashboard/tracking", label: "Tracking", icon: Activity },
   { href: "/dashboard/publishing", label: "Publishing", icon: Rocket },
   { href: "/dashboard/tasks", label: "Tasks", icon: ListTodo },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },

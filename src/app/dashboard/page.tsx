@@ -1,11 +1,12 @@
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, MessageSquareQuote, Video } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, DatabaseZap, MessageSquareQuote, ShieldCheck, Video } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getMissionDataset } from "@/lib/mission-data";
+import { buildMissionDataQuality, getMissionDataset } from "@/lib/mission-data";
 
 export default async function DashboardPage() {
   const data = await getMissionDataset();
+  const quality = buildMissionDataQuality(data);
 
   const overdueReviews = data.assets.filter((a) => a.status === "changes_requested").length;
   const unresolvedComments = data.comments.filter((c) => !c.resolved).length;
@@ -52,7 +53,9 @@ export default async function DashboardPage() {
                 <div key={stage} className="space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="capitalize">{stage}</span>
-                    <span className="text-muted-foreground">{count} · {pct}%</span>
+                    <span className="text-muted-foreground">
+                      {count} · {pct}%
+                    </span>
                   </div>
                   <div className="h-2 rounded-full bg-muted">
                     <div className="h-2 rounded-full bg-primary" style={{ width: `${pct}%` }} />
@@ -76,6 +79,30 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShieldCheck className="h-4 w-4" /> Qualidade e auditabilidade dos dados
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary" className="gap-1">
+              <DatabaseZap className="h-3 w-3" /> Fonte: {quality.source}
+            </Badge>
+            <Badge variant="outline">Atualizado: {new Date(quality.fetchedAt).toLocaleString("pt-BR", { timeZone: "UTC" })} UTC</Badge>
+          </div>
+          <div className="space-y-2">
+            {quality.checks.map((check) => (
+              <div key={check.label} className="rounded-md border p-3">
+                <p className="font-medium">{check.ok ? "✅" : "⚠️"} {check.label}</p>
+                <p className="text-muted-foreground">{check.details}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
