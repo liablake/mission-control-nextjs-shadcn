@@ -1,156 +1,61 @@
-import { AlertTriangle, CheckCircle2, Clock3, ListChecks, Timer } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, MessageSquareQuote, Video } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { statusLabel, tasks } from "@/lib/tasks";
+import { getMissionDataset } from "@/lib/mission-data";
 
-const MS_DAY = 1000 * 60 * 60 * 24;
+export default async function DashboardPage() {
+  const data = await getMissionDataset();
 
-function diffDays(from: Date, to: Date) {
-  return Math.max(0, Math.floor((to.getTime() - from.getTime()) / MS_DAY));
-}
-
-function startOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-export default function DashboardPage() {
-  const now = startOfDay(new Date());
-
-  const total = tasks.length;
-  const done = tasks.filter((t) => t.status === "done").length;
-  const doing = tasks.filter((t) => t.status === "doing").length;
-  const todo = tasks.filter((t) => t.status === "todo").length;
-
-  const completionRate = total > 0 ? Math.round((done / total) * 100) : 0;
-
-  const overdue = tasks.filter((t) => {
-    if (!t.dueAt || t.status === "done") return false;
-    return startOfDay(new Date(t.dueAt)).getTime() < now.getTime();
-  }).length;
-
-  const cycleTimes = tasks
-    .filter((t) => t.completedAt)
-    .map((t) => diffDays(startOfDay(new Date(t.createdAt)), startOfDay(new Date(t.completedAt!))));
-
-  const avgCycleTime =
-    cycleTimes.length > 0
-      ? Math.round((cycleTimes.reduce((acc, days) => acc + days, 0) / cycleTimes.length) * 10) / 10
+  const overdueReviews = data.assets.filter((a) => a.status === "changes_requested").length;
+  const unresolvedComments = data.comments.filter((c) => !c.resolved).length;
+  const readyToPublish = data.publishSlots.filter((s) => s.status === "scheduled").length;
+  const avgChecklist =
+    data.publishSlots.length > 0
+      ? Math.round(data.publishSlots.reduce((acc, s) => acc + s.checklistScore, 0) / data.publishSlots.length)
       : 0;
 
-  const weeklyThroughput = [
-    { label: "W-3", count: 0 },
-    { label: "W-2", count: 0 },
-    { label: "W-1", count: 0 },
-    { label: "Atual", count: 0 },
-  ];
-
-  for (const task of tasks) {
-    if (!task.completedAt) continue;
-    const daysAgo = diffDays(startOfDay(new Date(task.completedAt)), now);
-    const weekIndex = Math.floor(daysAgo / 7);
-    if (weekIndex >= 0 && weekIndex < 4) {
-      const slot = 3 - weekIndex;
-      weeklyThroughput[slot].count += 1;
-    }
-  }
-
-  const maxThroughput = Math.max(...weeklyThroughput.map((w) => w.count), 1);
-
-  const statusData = [
-    { key: "todo", value: todo },
-    { key: "doing", value: doing },
-    { key: "done", value: done },
-  ] as const;
+  const stageCounts = {
+    ideation: data.items.filter((i) => i.stage === "ideation").length,
+    planning: data.items.filter((i) => i.stage === "planning").length,
+    production: data.items.filter((i) => i.stage === "production").length,
+    review: data.items.filter((i) => i.stage === "review").length,
+    publishing: data.items.filter((i) => i.stage === "publishing").length,
+  };
 
   return (
     <div className="space-y-6 p-6">
       <div>
         <h2 className="text-2xl font-semibold">Mission Control</h2>
         <p className="text-sm text-muted-foreground">
-          Métricas operacionais válidas com base no board read-only de tarefas delegadas.
+          Operação read-heavy do pipeline audiovisual: ideação → planejamento → produção → revisão → publicação.
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ListChecks className="h-4 w-4" /> Total de tarefas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">{total}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Clock3 className="h-4 w-4" /> Em andamento
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">{doing}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CheckCircle2 className="h-4 w-4" /> Concluídas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">{done}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Taxa de conclusão</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">{completionRate}%</p>
-            <p className="text-xs text-muted-foreground">done / total</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <AlertTriangle className="h-4 w-4" /> Atrasadas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">{overdue}</p>
-            <p className="text-xs text-muted-foreground">todo + doing com due date vencida</p>
-          </CardContent>
-        </Card>
+        <Metric title="Itens no pipeline" value={String(data.items.length)} icon={Video} />
+        <Metric title="Assets em revisão" value={String(data.assets.length)} icon={Clock3} />
+        <Metric title="Comentários pendentes" value={String(unresolvedComments)} icon={MessageSquareQuote} />
+        <Metric title="Prontos para publicar" value={String(readyToPublish)} icon={CheckCircle2} />
+        <Metric title="Checklist médio" value={`${avgChecklist}%`} icon={CalendarClock} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Distribuição por status</CardTitle>
+            <CardTitle className="text-base">Distribuição por estágio</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {statusData.map((item) => {
-              const pct = total > 0 ? Math.round((item.value / total) * 100) : 0;
+          <CardContent className="space-y-3 text-sm">
+            {Object.entries(stageCounts).map(([stage, count]) => {
+              const pct = data.items.length ? Math.round((count / data.items.length) * 100) : 0;
               return (
-                <div key={item.key} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span>{statusLabel[item.key]}</span>
-                    <span className="text-muted-foreground">
-                      {item.value} ({pct}%)
-                    </span>
+                <div key={stage} className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="capitalize">{stage}</span>
+                    <span className="text-muted-foreground">{count} · {pct}%</span>
                   </div>
                   <div className="h-2 rounded-full bg-muted">
-                    <div
-                      className="h-2 rounded-full bg-primary"
-                      style={{ width: `${pct}%` }}
-                      aria-label={`${statusLabel[item.key]} ${pct}%`}
-                    />
+                    <div className="h-2 rounded-full bg-primary" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               );
@@ -160,41 +65,32 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Throughput (últimas 4 semanas)</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="h-4 w-4" /> Alertas operacionais
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex h-48 items-end gap-4">
-              {weeklyThroughput.map((week) => {
-                const h = Math.max(10, Math.round((week.count / maxThroughput) * 100));
-                return (
-                  <div key={week.label} className="flex flex-1 flex-col items-center gap-2">
-                    <div
-                      className="w-full rounded-md bg-primary/80"
-                      style={{ height: `${h}%` }}
-                      title={`${week.count} tarefas concluídas`}
-                    />
-                    <div className="text-xs text-muted-foreground">{week.label}</div>
-                    <Badge variant="secondary">{week.count}</Badge>
-                  </div>
-                );
-              })}
-            </div>
+          <CardContent className="space-y-3">
+            <Badge variant="outline">Changes requested: {overdueReviews}</Badge>
+            <Badge variant="outline">Comentários não resolvidos: {unresolvedComments}</Badge>
+            <Badge variant="outline">Slots em rascunho: {data.publishSlots.filter((s) => s.status === "draft").length}</Badge>
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Timer className="h-4 w-4" /> Eficiência de entrega
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-3 text-sm">
-          <Badge variant="outline">Lead time médio: {avgCycleTime} dias</Badge>
-          <Badge variant="outline">Backlog aberto: {todo + doing}</Badge>
-          <Badge variant="outline">Tarefas todo: {todo}</Badge>
-        </CardContent>
-      </Card>
     </div>
+  );
+}
+
+function Metric({ title, value, icon: Icon }: { title: string; value: string; icon: React.ComponentType<{ className?: string }> }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Icon className="h-4 w-4" /> {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-3xl font-bold">{value}</p>
+      </CardContent>
+    </Card>
   );
 }

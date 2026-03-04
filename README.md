@@ -11,11 +11,19 @@ npm run dev
 
 App em: <http://localhost:3000>
 
-## Clean state
+## Sprint 1 (read-heavy audiovisual)
 
-O projeto foi resetado para estado limpo:
-- dataset local em `src/lib/tasks.ts` começa vazio (`[]`)
-- métricas e gráficos continuam funcionando com zero dados
+Novas telas no dashboard:
+- `/dashboard/pipeline`
+- `/dashboard/reviews`
+- `/dashboard/publishing`
+
+Dataset principal em `src/lib/mission-data.ts`:
+- usa Supabase quando `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` estão definidos
+- fallback para dataset local de demonstração quando env não está configurado
+
+Pesquisa de benchmark documentada em:
+- `docs/research-sprint1-read-heavy-benchmarks.md`
 
 ## Supabase local
 
