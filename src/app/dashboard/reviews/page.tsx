@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { AlertTriangle, ExternalLink, PlayCircle } from "lucide-react";
+import { AlertTriangle, ExternalLink, PlayCircle, Siren, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { buildJourneyRows, buildReviewSlaRows } from "@/lib/mission-insights";
+import { buildDailyOpsQueue, buildJourneyRows, buildReviewerWorkload, buildReviewSlaRows } from "@/lib/mission-insights";
 import { getMissionDataset } from "@/lib/mission-data";
 
 function fmtTimecode(seconds?: number) {
@@ -14,10 +14,18 @@ function fmtTimecode(seconds?: number) {
   return `${mm}:${ss}`;
 }
 
+function formatDueInHours(value?: number) {
+  if (value === undefined) return "sem prazo";
+  if (value < 0) return `${Math.abs(value)}h atrasado`;
+  return `${value}h restantes`;
+}
+
 export default async function ReviewsPage() {
   const data = await getMissionDataset();
   const journeyRows = buildJourneyRows(data);
   const slaRows = buildReviewSlaRows(data).sort((a, b) => (b.oldestOpenCommentHours ?? 0) - (a.oldestOpenCommentHours ?? 0));
+  const dailyOpsQueue = buildDailyOpsQueue(data);
+  const workloadRows = buildReviewerWorkload(dailyOpsQueue);
 
   return (
     <div className="space-y-6 p-6">
@@ -26,6 +34,76 @@ export default async function ReviewsPage() {
         <p className="text-sm text-muted-foreground">
           Preview de versões, comentários por timecode e aprovação por gate para evitar handoffs cegos.
         </p>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Siren className="h-4 w-4" /> Fila prioritária de operação diária
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Item</TableHead>
+                  <TableHead>Owner</TableHead>
+                  <TableHead>Comentários</TableHead>
+                  <TableHead>Prazo</TableHead>
+                  <TableHead>Urgência</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {dailyOpsQueue.slice(0, 6).map((row) => (
+                  <TableRow key={row.itemId}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{row.title}</p>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {row.stage} · {row.versionLabel ?? "sem versão"}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>{row.owner}</TableCell>
+                    <TableCell>
+                      {row.unresolvedComments} abertos
+                      <p className="text-xs text-muted-foreground">{row.oldestOpenCommentHours ?? 0}h em aberto</p>
+                    </TableCell>
+                    <TableCell>{formatDueInHours(row.dueInHours)}</TableCell>
+                    <TableCell>
+                      <Badge variant={row.urgency === "critical" ? "destructive" : row.urgency === "attention" ? "outline" : "secondary"}>
+                        {row.urgency}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Users className="h-4 w-4" /> Carga por owner (review queue)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {workloadRows.map((row) => (
+              <div key={row.owner} className="rounded-lg border p-3">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <p className="font-medium">{row.owner}</p>
+                  <Badge variant={row.criticalItems > 0 ? "destructive" : "secondary"}>críticos: {row.criticalItems}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span>itens em review: {row.itemsInReview}</span>
+                  <span>comentários pendentes: {row.unresolvedComments}</span>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </div>
 
       <Card>

@@ -27,6 +27,7 @@ Dataset principal em `src/lib/mission-data.ts`:
 Pesquisa de benchmark documentada em:
 - `docs/research-sprint1-read-heavy-benchmarks.md`
 - `docs/research-sprint2-read-heavy-ux-workflows.md`
+- `docs/sprint4-execucao-4-notes.md`
 
 ## Supabase local
 
