@@ -31,6 +31,7 @@ Pesquisa de benchmark documentada em:
 - `docs/sprint5-execucao-5-notes.md`
 - `docs/sprint6-execucao-6-notes.md`
 - `docs/sprint7-execucao-7-notes.md`
+- `docs/sprint8-execucao-8-notes.md`
 
 ## Supabase local
 

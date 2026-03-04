@@ -2,6 +2,14 @@ import { type Channel, type MissionDataset, type PipelineStage } from "@/lib/mis
 
 const journeyOrder: PipelineStage[] = ["ideation", "planning", "production", "review", "publishing"];
 
+const thresholdByStage: Record<PipelineStage, number> = {
+  ideation: 24,
+  planning: 24,
+  production: 48,
+  review: 24,
+  publishing: 12,
+};
+
 type JourneyStepState = "done" | "active" | "pending";
 
 export type JourneyStep = {
@@ -131,6 +139,24 @@ export type StageSlaBreachRow = {
   thresholdHours: number;
   hoursInStage: number;
   breachByHours: number;
+};
+
+export type StageSlaComplianceRow = {
+  stage: PipelineStage;
+  items: number;
+  thresholdHours: number;
+  avgHoursInStage: number;
+  withinSlaRate: number;
+  breaches: number;
+};
+
+export type EndToEndFlowSnapshot = {
+  totalItems: number;
+  stageCounts: Record<PipelineStage, number>;
+  completionRate: number;
+  reviewToPublishRate: number;
+  blockedRate: number;
+  bottleneckStage: PipelineStage;
 };
 
 function stageIndex(stage: PipelineStage) {
@@ -522,13 +548,6 @@ export function buildReleaseControlRows(data: MissionDataset): ReleaseControlRow
 
 export function buildStageSlaBreachRows(data: MissionDataset): StageSlaBreachRow[] {
   const now = Date.now();
-  const thresholdByStage: Record<PipelineStage, number> = {
-    ideation: 24,
-    planning: 24,
-    production: 48,
-    review: 24,
-    publishing: 12,
-  };
 
   const eventsByItem = new Map<string, MissionDataset["stageEvents"]>();
   for (const event of data.stageEvents) {
@@ -563,6 +582,70 @@ export function buildStageSlaBreachRows(data: MissionDataset): StageSlaBreachRow
     })
     .filter((row) => row.breachByHours > 0)
     .sort((a, b) => b.breachByHours - a.breachByHours);
+}
+
+export function buildStageSlaComplianceRows(data: MissionDataset): StageSlaComplianceRow[] {
+  const now = Date.now();
+  const breachRows = buildStageSlaBreachRows(data);
+  const breachByItem = new Map(breachRows.map((row) => [row.itemId, row]));
+
+  return journeyOrder.map((stage) => {
+    const itemsInStage = data.items.filter((item) => item.stage === stage);
+
+    const stageHours = itemsInStage.map((item) => {
+      const breach = breachByItem.get(item.id);
+      if (breach) {
+        return breach.hoursInStage;
+      }
+
+      const enteredAt = data.stageEvents
+        .filter((event) => event.contentItemId === item.id && event.toStage === stage)
+        .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime())[0]?.changedAt ?? item.createdAt;
+
+      return Math.max(0, Math.round((now - new Date(enteredAt).getTime()) / (1000 * 60 * 60)));
+    });
+
+    const breaches = itemsInStage.filter((item) => breachByItem.has(item.id)).length;
+    const avgHoursInStage = stageHours.length ? Math.round(stageHours.reduce((acc, value) => acc + value, 0) / stageHours.length) : 0;
+    const withinSlaRate = itemsInStage.length ? Math.round(((itemsInStage.length - breaches) / itemsInStage.length) * 100) : 100;
+
+    return {
+      stage,
+      items: itemsInStage.length,
+      thresholdHours: thresholdByStage[stage],
+      avgHoursInStage,
+      withinSlaRate,
+      breaches,
+    };
+  });
+}
+
+export function buildEndToEndFlowSnapshot(data: MissionDataset): EndToEndFlowSnapshot {
+  const journeyRows = buildJourneyRows(data);
+  const stageCounts = journeyOrder.reduce((acc, stage) => {
+    acc[stage] = data.items.filter((item) => item.stage === stage).length;
+    return acc;
+  }, {} as Record<PipelineStage, number>);
+
+  const reviewOrBeyond = stageCounts.review + stageCounts.publishing;
+  const publishingCount = stageCounts.publishing;
+  const blocked = journeyRows.filter((row) => row.approvalGate === "blocked").length;
+  const completionRate = data.items.length ? Math.round((publishingCount / data.items.length) * 100) : 0;
+  const reviewToPublishRate = reviewOrBeyond ? Math.round((publishingCount / reviewOrBeyond) * 100) : 0;
+  const blockedRate = data.items.length ? Math.round((blocked / data.items.length) * 100) : 0;
+
+  const bottleneckStage = journeyOrder.reduce((worst, stage) =>
+    stageCounts[stage] > stageCounts[worst] ? stage : worst
+  , "ideation");
+
+  return {
+    totalItems: data.items.length,
+    stageCounts,
+    completionRate,
+    reviewToPublishRate,
+    blockedRate,
+    bottleneckStage,
+  };
 }
 
 export function buildStageCycleHours(data: MissionDataset) {

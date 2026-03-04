@@ -3,7 +3,12 @@ import { Activity, ArrowRight, Timer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { buildOpsDeliverySnapshot, buildStageCycleHours, buildStageSlaBreachRows } from "@/lib/mission-insights";
+import {
+  buildOpsDeliverySnapshot,
+  buildStageCycleHours,
+  buildStageSlaBreachRows,
+  buildStageSlaComplianceRows,
+} from "@/lib/mission-insights";
 import { getMissionDataset } from "@/lib/mission-data";
 
 function formatUtc(value: string) {
@@ -14,6 +19,7 @@ export default async function TrackingPage() {
   const data = await getMissionDataset();
   const cycleRows = buildStageCycleHours(data).sort((a, b) => b.cycleHours - a.cycleHours);
   const stageSlaBreaches = buildStageSlaBreachRows(data);
+  const stageSlaCompliance = buildStageSlaComplianceRows(data);
   const deliverySnapshot = buildOpsDeliverySnapshot(data);
 
   const avgCycleHours = cycleRows.length
@@ -178,6 +184,42 @@ export default async function TrackingPage() {
                   </TableCell>
                 </TableRow>
               )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Confiabilidade de SLA por etapa</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Etapa</TableHead>
+                <TableHead>Itens</TableHead>
+                <TableHead>Tempo médio</TableHead>
+                <TableHead>Limite SLA</TableHead>
+                <TableHead>Dentro do SLA</TableHead>
+                <TableHead>Breaches</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {stageSlaCompliance.map((row) => (
+                <TableRow key={row.stage}>
+                  <TableCell className="capitalize">{row.stage}</TableCell>
+                  <TableCell>{row.items}</TableCell>
+                  <TableCell>{row.avgHoursInStage}h</TableCell>
+                  <TableCell>{row.thresholdHours}h</TableCell>
+                  <TableCell>
+                    <Badge variant={row.withinSlaRate >= 80 ? "default" : row.withinSlaRate >= 60 ? "outline" : "destructive"}>
+                      {row.withinSlaRate}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{row.breaches}</TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </CardContent>

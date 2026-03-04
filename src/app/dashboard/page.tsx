@@ -1,6 +1,6 @@
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock3, DatabaseZap, MessageSquareQuote, ShieldCheck, Video } from "lucide-react";
 
-import { buildJourneyRows } from "@/lib/mission-insights";
+import { buildEndToEndFlowSnapshot, buildJourneyRows } from "@/lib/mission-insights";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ export default async function DashboardPage() {
   const data = await getMissionDataset();
   const quality = buildMissionDataQuality(data);
   const journeyRows = buildJourneyRows(data);
+  const flowSnapshot = buildEndToEndFlowSnapshot(data);
 
   const overdueReviews = data.assets.filter((a) => a.status === "changes_requested").length;
   const unresolvedComments = data.comments.filter((c) => !c.resolved).length;
@@ -45,6 +46,28 @@ export default async function DashboardPage() {
         <Metric title="Prontos para publicar" value={String(readyToPublish)} icon={CheckCircle2} />
         <Metric title="Checklist médio" value={`${avgChecklist}%`} icon={CalendarClock} />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Fluxo ponta a ponta (E2E)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-5">
+            {Object.entries(flowSnapshot.stageCounts).map(([stage, count]) => (
+              <div key={stage} className="rounded-lg border p-3">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">{stage}</p>
+                <p className="text-2xl font-bold">{count}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <Badge variant="secondary">conclusão: {flowSnapshot.completionRate}%</Badge>
+            <Badge variant="secondary">review→publish: {flowSnapshot.reviewToPublishRate}%</Badge>
+            <Badge variant={flowSnapshot.blockedRate > 25 ? "destructive" : "outline"}>bloqueados: {flowSnapshot.blockedRate}%</Badge>
+            <Badge variant="outline" className="capitalize">gargalo atual: {flowSnapshot.bottleneckStage}</Badge>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
